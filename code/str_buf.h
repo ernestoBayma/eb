@@ -40,6 +40,8 @@ struct __impl_eb_str_fixed {
   u8          *last_char; // Note(ern): Makes trivial to concatenate
 };
 
+
+
 struct StrBuf {
   struct __impl_eb_str_fixed fixed_buf;
   struct __impl_eb_str_buf_header dyn_buf;

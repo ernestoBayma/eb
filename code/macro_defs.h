@@ -283,6 +283,8 @@ CheckNil(nil,p) ? \
   #define ASAN_UNPOISON_MEMORY_REGION(addr, size) ((void)(addr), (void)(size))
 #endif 
 
+#define UsagePrint(out,arg,msg) fprintf(out, " %-20s %s\n", (arg), (msg))
+
 #if Lang_CPP
   C_Linkage_End
 #endif

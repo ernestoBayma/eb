@@ -34,6 +34,14 @@
 
 global_var ServerConf global_server;
 
+global_var KeyValue usageOptions[] = {
+    {"--help", "Display this help message"},
+    {"--config", "Configuration file of the server"},
+    {"--daemon", "Makes server run as background process"},
+    {0,0}
+};
+
+
 priv_func ArenaAllocator *serverGetMainAllocator(ServerConf *server)
 {
   return server->arena[0];
@@ -252,18 +260,6 @@ ScrachAllocator scrach;
   return ret;
 }
 
-priv_func void print_help(char *prog_name, FILE *out)
-{
-#define USAGE_PRINT(arg,msg) fprintf(out, " %-20s %s\n", (arg), (msg))
-  fprintf(out, "Usage: %s [OPTIONS] ...\n", prog_name);
-  fprintf(out, "Version: "VERSION"\n");
-  fprintf(out, "Options:\n");
-  USAGE_PRINT("--help", "Display this help message");
-  USAGE_PRINT("--config", "Configuration file of the server");
-  USAGE_PRINT("--daemon", "Makes server run as a background process");
-  exit(EXIT_SUCCESS);
-}
-
 priv_func bool init_server(ServerConf *s, char **arg_values, int arg_count)
 {
 ArenaAllocator *temp;
@@ -284,7 +280,7 @@ ScrachAllocator scrach;
     arg_message_error = STR_INVALID;
     arg = str_list_contains(&args, cstr_lit("--help"));
     if(arg) {
-      print_help(PROG_NAME, stdout); 
+      printUsage(PROG_NAME, VERSION, stdout, usageOptions); 
     }
     arg = str_list_contains(&args, cstr_lit("--config"));
     if(arg) {
@@ -441,7 +437,6 @@ char            *file_contents;
 Str              file_str;
 s32              result;
 
-  log("[INFO] Config file located at "STRFMT"\n", STR_PRINT_ARGS(filepath));
   file = osOpenFile(filepath, ReadAction);
   if(file.errors != FileRequestSuccess) {
     goto close_file;

@@ -5,12 +5,13 @@
 #include "util.h"
 #include "os.h"
 #include "allocator.h"
+#include "str_buf.h"
 
-#if __cplusplus
-extern "C" 
-{
+#if defined(Lang_CPP)
+C_Linkage_Start
 #endif
 
+typedef struct Logger Logger;
 enum LogLevel {
   Debug = 0,
   Warning,
@@ -19,14 +20,14 @@ enum LogLevel {
   LevelCount
 };
 
-global_var Str LogPrefixes[] = {
+global_var Str 
+LogPrefixes[] = {
   cstr_lit("[DEBUG]"),
   cstr_lit("[WARNING]"),
   cstr_lit("[ERROR]"),
   cstr_lit("[INFO]")
 };
 
-typedef struct Logger Logger;
 #define define_log_function(name) void name(RequestedFile file, enum LogLevel level, Str message)
 typedef define_log_function(logger_func);
 #define INIT_LOGGER(file) log_init((file), 0);
@@ -41,7 +42,7 @@ Logger log_init(RequestedFile file, logger_func *f);
 void   log_puts_strarg(Logger l, enum LogLevel level, Str message);
 void   log_puts_cstrarg(Logger l, enum LogLevel level, const char *message);
 void   log_putsf(Logger l, ArenaAllocator *arena, enum LogLevel level, const char *fmt, ...); 
-void log_requested_file_error(Logger l, RequestedFile file);
+void   log_requested_file_error(Logger l, RequestedFile file);
 
 #define log_puts(l, lvl, m) _Generic((m),\
   const char *: log_puts_cstrarg,\
@@ -49,16 +50,14 @@ void log_requested_file_error(Logger l, RequestedFile file);
   Str: log_puts_strarg\
 )(l,lvl,m)
 
-#if __cplusplus
-}
+#if defined(Lang_CPP)
+C_Linkage_End
 #endif
 #endif
 
 #if defined(EB_LOGGER_IMPLEMENTATION)
-
-#if __cplusplus
-extern "C" 
-{
+#if defined(Lang_CPP)
+C_Linkage_Start
 #endif
 
 void
@@ -68,15 +67,19 @@ log_function_internal(RequestedFile file, enum LogLevel level, Str message)
 
 char    time_buffer[64];
 time_t  now;
+StrBuf  buffer;
   
     if(level < Debug && level >= LevelCount) return;
 
+    buffer = strbuf_new_sized(4096);
     now = time(NULL);
     strftime(time_buffer, sizeof(time_buffer), "[%Y-%m-%d %H:%M:%S] ", localtime(&now));
-    osFullWriteToFile(file, cstr(time_buffer));
-    osFullWriteToFile(file, LogPrefixes[level]);
-    osFullWriteToFile(file, message);
-    osFullWriteToFile(file, cstr_lit("\n"));
+    strbuf_concat(&buffer, time_buffer);
+    strbuf_concat(&buffer, LogPrefixes[level]);
+    strbuf_concat(&buffer, message);
+    strbuf_concat(&buffer, "\n");
+    osFullWriteToFile(file, strbuf_get_str(&buffer));
+    strbuf_release(&buffer);
 }
 
 Logger 
@@ -150,8 +153,8 @@ Str  str;
     log_puts(l, Error, str); 
 }
 
-#if __cplusplus
-}
+#if defined(Lang_CPP)
+C_Linkage_End
 #endif
 
 #endif

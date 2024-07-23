@@ -17,6 +17,12 @@
 #define EB_STR_LIST_IMPLEMENTATION
 #include "str.h"
 
+global_var KeyValue usageOptions[] = {
+  {"--help", "This usage message"},
+  {"--count", "This to run benchmarks"},
+  {0,0}
+};
+
 void bench_force_cache_miss()
 {
 #define SIZE 1024
@@ -38,7 +44,7 @@ s32 index, index_inner;
 s64 bench_##name() { \
 s64 macro_var(counter);\
 init_code;\
-timed_scope({{bench_code}}, macro_var(counter));\
+TimedScope({{bench_code}}, macro_var(counter));\
 return macro_var(counter);\
 }
 
@@ -88,6 +94,20 @@ BENCH_FUNC(memset,
  char mem[64];
 );
 
+BENCH_FUNC(CopyingStrBuf,
+{
+    MemoryCopy(&a, &b, sizeof(StrBuf));
+},
+ StrBuf a,b;
+);
+
+BENCH_FUNC(ZeroStrBuf,
+{
+    MemoryZeroStruct(&a);
+},
+ StrBuf a;
+);
+
 global_var 
 BenchCtx 
 bench_functions[] = {
@@ -97,6 +117,8 @@ bench_functions[] = {
   {.func=bench_memcpy_Aligned,.name=stringfy(bench_memcpy_Aligned)},
   {.func=bench_zeroMemory,.name=stringfy(bench_zeroMemory)},
   {.func=bench_memset,.name=stringfy(bench_memset)},
+  {.func=bench_ZeroStrBuf,.name=stringfy(bench_ZeroStrBuf)},
+  {.func=bench_CopyingStrBuf,.name=stringfy(bench_CopyingStrBuf)},
 };
 
 void run_benches(BenchCtx *c, s32 total_benches, s32 total_times)
@@ -130,32 +152,22 @@ int main(int argc, char *argv[])
 {
 s32 total;
 
-#if 1
-  StrBuf buffer = strbuf_new("Hello, World!\n");
-  if(strbuf_buf_valid(buffer)) {
-      strbuf_concat(&buffer, "Essa merda esta sendo concatenada\n");
-      strbuf_concat(&buffer, "De novo hein\n");
-      strbuf_concat(&buffer, "Mais uma vez\n");
-      strbuf_concat(&buffer, "This is a really large string, that will not fit on the fixed buff anymore, problably will fail, not sure yet!!!!!\n");
-      strbuf_concat(&buffer, NOT_FOUND_HTML);
-      strbuf_clear(&buffer);
-      strbuf_concat(&buffer, "New string\n");
-      log("Dynamic %d\n", (s32)buffer.dynamic);
-      Str str = strbuf_get_str(&buffer);
-      log("Buffer => "STRFMT"\n", STR_PRINT_ARGS(str));
-  }
-#endif
-#if 0
   if(argc > 1) {
-    s32 converted = atoi(argv[1]);
-    if(converted > 0) total = converted;
-    else total = 1000;
+      if(MemoryMatch(argv[1], "--count", StringLength(argv[1]))) {
+          s32 converted = atoi(argv[2]);
+          if(converted > 0) total = converted;
+          else {
+              fprintf(stderr, "--count expects a value bigger than zero. Leaving....\n");
+              exit(0);
+          }
+      } else {
+         printUsage(argv[0], 0, stdout, usageOptions);
+      }
   } else {
-      total = 1000;
+      printUsage(argv[0], 0, stdout, usageOptions);
   }
 
-  run_benches(bench_functions, static_array_size(bench_functions), total);
-#endif
+  run_benches(bench_functions, StaticArraySize(bench_functions), total);
 
   return 0;
 }

@@ -1,4 +1,5 @@
 #include <string.h>
+#include <stdlib.h>
 #include <stddef.h>
 
 #include "core.h"
@@ -179,4 +180,19 @@ bool humanRedableFileRequestError(Str str, enum FileRequestErrors error)
   }
   strncat(STR_DATA(str), st_str, STR_SIZE(str));
   return true;
+}
+
+void printUsage(char *prog_name, char *version, FILE *out, KeyValue *values)
+{
+  fprintf(out, "Usage: %s [OPTIONS] ...\n", prog_name);
+  if(version)
+    fprintf(out, "Version: %s\n", version);
+
+  if(values) {
+    fprintf(out, "Options:\n");
+    for(int i = 0; values[i].key; i++) {
+      UsagePrint(out, values[i].key, values[i].value);
+    }
+  }
+  exit(EXIT_SUCCESS);
 }
