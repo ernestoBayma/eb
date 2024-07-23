@@ -1,0 +1,16 @@
+# This is a comment
+
+# <ident>=<value>\n
+server_port=8081
+server_addr=127.0.0.1
+# folder don't need to have last '/'
+server_root_folder=/home/ernesto/coragem/misc/www/
+# Optional throttle sleep, 0 is disabled
+server_throttle = 5
+# Log error folder
+server_error_log=/home/ernesto/coragem/misc/log/httpd_error.log
+# Log request folder
+server_request_log=/home/ernesto/coragem/misc/log/httpd_request.log
+# Log info 
+server_info_log=/home/ernesto/coragem/misc/log/httpd_info.log
+server_working_directory=/home/ernesto/webserver/
