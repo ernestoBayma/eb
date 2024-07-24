@@ -88,16 +88,16 @@ s32           fd, error;
   fd = -1;
 
   open_flags = fileActionToFlag(action);
+  //Note(ern): if O_CREAT is not specified, then permissions is ignored
   mode_t permissions = 0666;
 
-  //Note(ern): if O_CREAT is not specified, then permissions is ignored
-  //TODO(ern): Debug why this is not working, It returns File Not found in most of the cases.
   if(0 && handle) {
+    //TODO(ern): Debug why this is not working, openat returns 'File Not found' in most of the cases.
     fd = openat(FH_TO_INT(handle->folder.handle), STR_DATA(filepath), open_flags, permissions);
   } else {
     if(handle) {
-      StrBuf temp = strbuf_new_sized(4096); //TODO ern
-      strbuf_concatf(&temp, "%s"STRFMT, handle->path, STR_PRINT_ARGS(filepath)); //TODO ern
+      StrBuf temp = strbuf_alloc(.capacity=4096);
+      strbuf_concatf(&temp, "%s"STRFMT, handle->path, STR_PRINT_ARGS(filepath));
       filepath = strbuf_get_str(&temp);
       fd = open(STR_DATA(filepath), open_flags, permissions);
       strbuf_release(&temp);
@@ -425,6 +425,17 @@ MultiplexerHandle handle = {0};
     return handle;
 }
 
+s32 osFullReadFromFile(RequestedFile f, StrBuf *buffer)
+{
+  if((f.valid_actions & ReadAction) == 0) {
+    f.errors = FileRequestNoReadPermission;
+    return -1;
+  }
+
+  SocketType s = {.socket=FH_TO_INT(f.handle)};
+  return osFullReadFromSocket(s, buffer);
+}
+
 s32 osFullReadFromSocket(SocketType s, StrBuf *buffer)
 {
 s32   result;
@@ -442,7 +453,7 @@ char  read_buffer[4096];
         else
           return errno; 
     }
-    strbuf_concat_sized(buffer, read_buffer, result);
+    strbuf_concat_sized(buffer, read_buffer, result, 0);
   } while(1);
   return 0;
 }
@@ -464,34 +475,6 @@ u32 offset;
           break;
         else
           return errno; 
-    }
-    offset += result;
-  } while(offset < STR_SIZE(buffer));
-  return 0;
-}
-
-s32 osFullReadFromFile(RequestedFile f, Str buffer)
-{
-s32 result;
-u32 offset;
-
-  if((f.valid_actions & ReadAction) == 0) {
-    f.errors = FileRequestNoReadPermission;
-    return -1;
-  }
-
-  offset = 0;
-  do {
-    Str slice = str_substr(buffer, offset, STR_SIZE(buffer) - offset);
-    result = read(FH_TO_INT(f.handle), STR_DATA(slice), STR_SIZE(slice));
-    if(result == 0) break;
-    if(result == -1) {
-      if(errno != EWOULDBLOCK)
-        break;
-      if(errno == EAGAIN)
-        break;
-      else 
-        return errno;
     }
     offset += result;
   } while(offset < STR_SIZE(buffer));

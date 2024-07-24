@@ -53,9 +53,9 @@ ArenaAllocator *arenaJoin(ArenaAllocator *a, ArenaAllocator *b);
 ScrachAllocator scrachNew(ArenaAllocator *a);
 void scrachEnd(ScrachAllocator s);
 
-#define ScrachEnd__debug(s) do{fprintf(stderr, "[DEBUG] "STRFMT":%s:%d -> Poping Arena to %llu position\n", STR_PRINT_ARGS(s.arena->options->allocator_name) ,__func__,__LINE__, s.offset); scrachEnd(s);}while(0)
+#define ScrachEnd__debug(s) do{scrachEnd(s);}while(0)
 
-#define push_arena_array(a, T, c) (T*)arenaPush__debug((a), sizeof(T)*(c), Max(8, AlignOf(T)), __FILE__, __func__, __LINE__)
+#define push_arena_array(a, T, c) (T*)arenaPush((a), sizeof(T)*(c), Max(8, AlignOf(T)))
 #define push_arena_array_aligned(a, T, c, al) (T*)arenaPush((a), sizeof(T)*(c), (al))
 #define push_arena_array_zero(a, T, c) (T*)MemoryZero(push_arena_array(a,T,c), sizeof(T)*(c))
 #define push_arena_array_zero_aligned(a, T, c, al) (T*)MemoryZero(push_arena_array_aligned(a,T,c,al), sizeof(T)*(c))

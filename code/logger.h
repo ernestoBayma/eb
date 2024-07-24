@@ -71,13 +71,13 @@ StrBuf  buffer;
   
     if(level < Debug && level >= LevelCount) return;
 
-    buffer = strbuf_new_sized(4096);
+    buffer = strbuf_alloc(.capacity=4096);
     now = time(NULL);
     strftime(time_buffer, sizeof(time_buffer), "[%Y-%m-%d %H:%M:%S] ", localtime(&now));
-    strbuf_concat(&buffer, time_buffer);
-    strbuf_concat(&buffer, LogPrefixes[level]);
-    strbuf_concat(&buffer, message);
-    strbuf_concat(&buffer, "\n");
+    strbuf_concat(&buffer, time_buffer, 0);
+    strbuf_concat(&buffer, LogPrefixes[level], 0);
+    strbuf_concat(&buffer, message, 0);
+    strbuf_concat(&buffer, "\n", 0);
     osFullWriteToFile(file, strbuf_get_str(&buffer));
     strbuf_release(&buffer);
 }

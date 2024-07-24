@@ -94,6 +94,26 @@ char          fullpath[EB_MAX_PATH_SIZE] = {0};
   return l;
 }
 
+StrBuf readFile(ArenaAllocator *arena, RequestedFile file)
+{
+StrBuf buf;
+
+    buf = strbuf_alloc(.shared_arena=arena);
+    osFullReadFromFile(file, &buf);
+    return buf;
+}
+
+bool sendToClient(StrBuf *buf, SocketType client)
+{
+Str str;
+    str = strbuf_get_str(buf);
+    if(!STR_PTR_VALID(str))
+        return false;
+    osFullWriteToSocket(client, str);
+    return true;
+}
+
+
 priv_func RequestedFile closeRequestedFile(RequestedFile file)
 {
   osCloseFile(file);
@@ -124,6 +144,11 @@ int             i, ret;
 enum            {GET=0,PATH,HTTP_VERSION,ELEMENTS_TOTAL};
 Str             line[ELEMENTS_TOTAL];
 char            bar[] = "/";
+ArenaAllocator  *arena;
+ScrachAllocator  scrach;
+
+  arena  = serverGetBackupAllocator(server);
+  scrach = scrachNew(arena);
 
   ret = STATUS_INTERNAL_ERROR_INTEGER;
   str_split_all(ELEMENTS_TOTAL, line, s, " ");
@@ -133,48 +158,45 @@ char            bar[] = "/";
   
   Str file_name = str_trim_start(line[PATH], bar);
 
-  file = openRequestedFile(file_name, &server->root_folder);
-
-  bool found = false;
-  for(i = 0; !found && FILE_TYPES[i].http_type_len; i++) {
-      if(str_contains(file_name, cstr(FILE_TYPES[i].http_type.key))) {
-        memcpy(filetype, FILE_TYPES[i].http_type.value, FILE_TYPES[i].http_type_len);
-        found = true;
-      }
-  }
-  if(!found) {
-    memcpy(filetype, FILE_TYPES[0].http_type.value, FILE_TYPES[0].http_type_len);
-  }
-
-  StrBuf response = strbuf_new_sized(4096);
-  if(file.errors == FileRequestSuccess) {
-    strbuf_concatf(&response, HTTP_1_1_HEADER(STATUS_OK) HEADER_CONTENT_TYPE HEADER_CONTENT_LEN HEADER_LINE_END HEADER_LINE_END, filetype, file.size);
-    ret = STATUS_OK_INTEGER;
-  } else if(file.errors == FileRequestNotFound) {
-    strbuf_concat(&response, HTTP_1_1_HEADER(STATUS_NOT_FOUND) HEADER_LINE_END HEADER_LINE_END);
-    ret = STATUS_NOT_FOUND_INTEGER;
-  } else {
-    print_file_error(file);
-    strbuf_concat(&response, HTTP_1_1_HEADER(STATUS_INTERNAL_ERROR) HEADER_LINE_END HEADER_LINE_END);
-  }
-
-  Str header = strbuf_get_str(&response);
-  send_get_header(client, header);
-
-  switch(ret) {
-  case STATUS_NOT_FOUND_INTEGER:
-    osFullWriteToSocket(client, NOT_FOUND_HTML);
-    break;
-  default:
-    if(file.exists) {
-      osSendFile(client, file.handle, file.size);
+  DeferLoop((file = openRequestedFile(file_name, &server->root_folder)), (file = closeRequestedFile(file), scrachEnd(scrach))) {
+    bool found = false;
+    for(i = 0; !found && FILE_TYPES[i].http_type_len; i++) {
+        if(str_contains(file_name, cstr(FILE_TYPES[i].http_type.key))) {
+          memcpy(filetype, FILE_TYPES[i].http_type.value, FILE_TYPES[i].http_type_len);
+          found = true;
+        }
     }
-  break;
-  }
-  strbuf_release(&response);
+    if(!found) {
+      memcpy(filetype, FILE_TYPES[0].http_type.value, FILE_TYPES[0].http_type_len);
+    }
 
-close_file:
-  file = closeRequestedFile(file);
+    StrBuf response = strbuf_alloc(.shared_arena=scrach.arena,.capacity=4096);
+    if(file.errors == FileRequestSuccess) {
+      strbuf_concatf(&response, HTTP_1_1_HEADER(STATUS_OK) HEADER_CONTENT_TYPE HEADER_CONTENT_LEN HEADER_LINE_END HEADER_LINE_END, filetype, file.size);
+      ret = STATUS_OK_INTEGER;
+    } else if(file.errors == FileRequestNotFound) {
+      strbuf_concat(&response, HTTP_1_1_HEADER(STATUS_NOT_FOUND) HEADER_LINE_END HEADER_LINE_END, 0);
+      ret = STATUS_NOT_FOUND_INTEGER;
+    } else {
+      print_file_error(file);
+      strbuf_concat(&response, HTTP_1_1_HEADER(STATUS_INTERNAL_ERROR) HEADER_LINE_END HEADER_LINE_END, 0);
+    }
+
+    Str header = strbuf_get_str(&response);
+    send_get_header(client, header);
+
+    switch(ret) {
+    case STATUS_NOT_FOUND_INTEGER:
+      osFullWriteToSocket(client, NOT_FOUND_HTML);
+      break;
+    default:
+      if(file.exists) {
+        StrBuf file_contents = readFile(scrach.arena, file);
+        sendToClient(&file_contents, client);
+      }
+    break;
+    }
+  }
 	return ret;
 }
 
@@ -433,7 +455,7 @@ priv_func void read_config_file(ServerConf *server, ArenaAllocator *arena, Str f
 {
 RequestedFile   file;
 StrList         config_lines;
-char            *file_contents;
+StrBuf           file_contents;
 Str              file_str;
 s32              result;
 
@@ -444,14 +466,13 @@ s32              result;
   if(file.size <= 0) {
     goto close_file;
   }
-  file_contents = (char*)push_arena_array(arena, char, file.size); 
-  STR_DATA(file_str) = file_contents;
-  STR_SIZE(file_str) = file.size;
 
-  result = osFullReadFromFile(file, file_str);
+  file_contents = strbuf_alloc(.shared_arena=arena,.capacity=file.size);
+  result = osFullReadFromFile(file, &file_contents);
   if(result != 0) {
       log("Failed reading from file error from OS [%d]\n", result);
   } else {
+      file_str = strbuf_get_str(&file_contents);
       config_lines = str_list_build_from_lines(file_str, arena);          
       parse_config_file(server, &config_lines);
   }

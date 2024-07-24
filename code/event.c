@@ -77,6 +77,8 @@ s32 ret;
 Event e;
 EventOptions opt;
 EpollHandle  epoll_handle;
+ArenaAllocator *event_allocation;
+ScrachAllocator  scrach_event;
 
   event_type      = GetEventHandleType(h);
   callback        = GetEventCallback(h);
@@ -92,8 +94,10 @@ EpollHandle  epoll_handle;
   ServerTcpHandle tcp;
   tcp = h.server_tcp;
   epoll_handle = tcp.multiplexer.e;
+  event_allocation = arenaNew();
+  scrach_event = scrachNew(event_allocation);
 
-  while(true) {
+  for(; ; scrachEnd(scrach_event)) {
     events_now = osMultiplexerPoll(tcp.multiplexer, tcp.optional_timeout);
     if(events_now == -1) {
       if(errno == EINTR) 
@@ -144,7 +148,7 @@ EpollHandle  epoll_handle;
               Str  ip_buf = cstr_static(ip_str_buf);
               e.info.client_ip = ip_buf;
               osGetSocketConnectionInfo(client, ip_buf, &e.info.port);
-              e.ev_buff = strbuf_new_sized(4096);
+              e.ev_buff = strbuf_alloc(.flags=StrBufIncrease|StrBufSharedArena,.shared_arena=event_allocation);
               if(osFullReadFromSocket(e.client, &e.ev_buff) != 0) {
                   ret = CallbackCloseClient | CallbackError;
               } else {
@@ -155,7 +159,6 @@ EpollHandle  epoll_handle;
                 error_callback(e, opt.user_defined_ptr);
               }
 
-              strbuf_release(&e.ev_buff);
               osRemoveSocketFromMultiplexer(tcp.multiplexer, client);
               osCloseSocket(client);
         }
