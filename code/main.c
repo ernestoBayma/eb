@@ -4,10 +4,13 @@
 
 #if OS_LINUX
 #include <signal.h>
+#include <unistd.h>
 void sigint_handler(int signo)
 {
-  puts("Interruption signal received. Finishing execution");
-  exit(EXIT_SUCCESS); 
+char error_msg[] = "Interruption signal received. Finishing execution\n";
+
+  write(STDERR_FILENO, error_msg, sizeof(error_msg) - 1);
+  _exit(EXIT_SUCCESS); 
 }
 int main(int arg_count, char *args[])
 {
