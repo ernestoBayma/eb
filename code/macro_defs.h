@@ -35,7 +35,7 @@
 
 #define Assert(expr) assert((expr))
 
-#define Cast(T,expr) (T)(expr)
+#define Cast(T,expr) ((T)(expr))
 #define Bytes(n)     Cast(size_t, (n))
 #define KB(n)        (Cast(size_t, Bytes(n)) <<  10)
 #define MB(n)        (Cast(size_t, Bytes(n)) <<  20)
@@ -54,30 +54,51 @@
   C_Linkage_Start
 #endif
 
-
 #if defined(COMPILER_GCC) || defined(COMPILER_CLANG)
   #define INLINE __attribute__((always_inline))
-  #if EB_HAS_SSE
-    #define TARGET_SSSE3 __attribute__((target("ssse3")))
+
+  #define TARGET_AES __attribute__((target("aes")))
+  #if EB_HAS_AVX
+    #define TARGET_AVX  __attribute__((target("avx")))
+    #define TARGET_AVX2 __attribute__((target("avx2")))
   #else
-    #define TARGET_SSSE3 
+    #define TARGET_AVX  
+    #define TARGET_AVX2 
+  #endif
+  #if EB_HAS_SSE
+    #define TARGET_SSE __attribute__((target("sse4.1")))
+  #else
+    #define TARGET_SSE 
   #endif
 #elif COMPILER_MS
   #define INLINE __forceinline
-  #define TARGET_SSSE3 
+  #define TARGET_AES 
+  #define TARGET_SSE 
+  #define TARGET_AVX  
+  #define TARGET_AVX2 
 #else
   #define INLINE 
-  #define TARGET_SSSE3 
+  #define TARGET_AES 
+  #define TARGET_SSE 
+  #define TARGET_AVX  
+  #define TARGET_AVX2 
 #endif
 
 #if COMPILER_MS
 # define AlignOf(T) __alignof(T)
+# include <intrin.h>
+# define cpuid(level, eax, ebx, ecx, edx) do { int macro_var(cpu_info)[4] = { eax, ebx, ecx, edx}; \
+__cpuid(macro_var(cpu_info), level)} while(0)
 #elif COMPILER_CLANG
 # define AlignOf(T) __alignof(T)
+# include <cpuid.h>
+# define cpuid(level, eax, ebx, ecx, edx) __get_cpuid(level, eax, ebx, ecx, edx)
 #elif COMPILER_GCC
 # define AlignOf(T) __alignof__(T)
+# include <cpuid.h>
+# define cpuid(level, eax, ebx, ecx, edx) __get_cpuid(level, eax, ebx, ecx, edx)
 #else
-# error AlignOf not defined for this compiler.
+# error Compiler not supported.
 #endif
 
 #define StaticArraySize(elem) (sizeof(elem)/sizeof(elem)[0])
@@ -259,7 +280,8 @@ CheckNil(nil,p) ? \
   fprintf(stderr, (msg), ##args);\
 } while(0)
 
-#define PrintVariableString(value) log("[DEBUG] %s = %s\n", stringfy(value), (value));
+#define PrintVariableString(value) log("[DEBUG] %s = %s\n",   stringfy(value), (value));
+#define PrintVariableU64(value)    log("[DEBUG] %s = %llu\n", stringfy(value), (value));
 
 #ifndef _RELEASE_BUILD
   #define debug() log("%s:%d\n", __func__, __LINE__)

@@ -15,3 +15,5 @@ bool humanRedableFileRequestError(Str str, enum FileRequestErrors error);
 void memoryCopy(void *pa, void *pb, s64 amt);
 void zeroMemory(void *ptr, s64 amt);
 void printUsage(char *prog_name, char*version, FILE *out, KeyValue *values);
+u64 util_node_hash(void *data, u64 data_size);
+u64  util_hash_sse(void *data, u64 data_size);

@@ -4,7 +4,7 @@ KERNEL_LINUX_VER:={{LINUX_VER}}
 VERSION={{VERSION}}
 EPOLL_COMPAT_KERNEL:={{EPOLL_COMPAT_KERNEL}}
 ASAN_CFLAGS=-fsanitize=address
-OPTIMIZATION=-O2 -D_RELEASE_BUILD=1
+OPTIMIZATION=-O2  -floop-unroll-and-jam -funswitch-loops -fvect-cost-model=dynamic -D_RELEASE_BUILD=1 
 DEBUG=-O0 -g -ggdb3 -D_DEBUG_BUILD=1
 FOLDER_SRC={{SOURCE_CODE_FOLDER}}
 DEFAULT_ROOT_FOLDER={{DEFAULT_ROOT_FOLDER}}
@@ -18,10 +18,10 @@ LFLAGS+= -lrt -lm -std=gnu11 {{DEBUG_TYPE}}
 
 all: $(PROG)
 
-$(PROG): $(FOLDER_SRC)/main.c $(FOLDER_SRC)/coragem.c $(FOLDER_SRC)/allocator.c $(FOLDER_SRC)/util.c $(FOLDER_SRC)/os.c $(FOLDER_SRC)/event.c
+$(PROG): $(FOLDER_SRC)/main.c $(FOLDER_SRC)/coragem.c $(FOLDER_SRC)/allocator.c $(FOLDER_SRC)/util.c $(FOLDER_SRC)/os.c $(FOLDER_SRC)/event.c $(FOLDER_SRC)/timer.c
 	$(CC) $(ASAN_CFLAGS) $(CFLAGS) $^ -o $@ $(LFLAGS)
 
-test: $(FOLDER_SRC)/test.c $(FOLDER_SRC)/util.c $(FOLDER_SRC)/allocator.c $(FOLDER_SRC)/os.c
+test: $(FOLDER_SRC)/test.c $(FOLDER_SRC)/util.c $(FOLDER_SRC)/allocator.c $(FOLDER_SRC)/os.c $(FOLDER_SRC)/timer.c
 	$(CC) $(ASAN_CFLAGS) $(CFLAGS) $^ -o $@ $(LFLAGS)
 
 .PHONY: all clean
