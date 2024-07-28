@@ -121,6 +121,7 @@ char            s[1];
 char            *allocated_ptr;
 s32             size_needed;
 Str             str;
+ScrachAllocator scrach;
 
     if(!l.func || l.file.errors != FileRequestSuccess) return;
 
@@ -129,7 +130,8 @@ Str             str;
     va_end(args);
 
     if(size_needed > 0) {
-      allocated_ptr = (char*)push_arena_array(arena, char, size_needed + 1);
+      scrach = scrachNew(arena);
+      allocated_ptr = (char*)push_arena_array(scrach.arena, char, size_needed + 1);
     
       va_start(args, fmt);      
       s32 written = vsnprintf(allocated_ptr, size_needed, fmt, args);
@@ -139,6 +141,7 @@ Str             str;
   
       str  = cstr(allocated_ptr);
       l.func(l.file, level, str);
+      scrachEnd(scrach);
     }
 }
 

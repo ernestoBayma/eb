@@ -104,6 +104,7 @@ struct EventHandle
     ServerTcpHandle server_tcp;
   }; 
 
+  bool            valid;
   EventQueueList  queues;
   EventOptions    options;
 };

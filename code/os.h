@@ -40,6 +40,7 @@ typedef struct RequestedFile     RequestedFile;
 typedef struct SocketType        SocketType;
 typedef struct MultiplexerEvents MultiplexerEvents;
 typedef struct FileHandle        FileHandle;
+typedef struct ProcessInformation ProcessInformation;
 
 enum MultiplexerHandleType {
   Select=1,
@@ -107,6 +108,14 @@ struct RequestedFile
     enum FileAction         valid_actions;
 };
 
+struct ProcessInformation 
+{
+   TimeValue cpu_time_used;
+   u64       resident_memory_used;
+   u64       page_faults;
+   u64       swaps;
+};
+
 #if defined(__linux__)
   typedef struct FolderHandleLinux {
     char          path[256];
@@ -118,6 +127,7 @@ struct RequestedFile
 
 void        *osMemoryReserve(size_t size);
 bool        osMemoryCommit(void *memory, size_t size);
+bool        osMemoryDecommit(void *memory, size_t size);
 void        osMemoryRelease(void *memory, size_t size);
 size_t      osPageSize(void);
 RequestedFile osOpenFile(Str filepath, enum FileAction action);
@@ -151,4 +161,5 @@ MultiplexerHandle osGetMultiplexerHandle(ArenaAllocator *a,s32 type,s32 event_co
 s32         osMultiplexerPoll(MultiplexerHandle h, s32 timeout);
 bool        osGetSocketConnectionInfo(SocketType sock, Str ip_buf, s32 *port);
 s32         osFullReadFromFile(RequestedFile f, StrBuf *buffer);
+ProcessInformation osGetProcessInfo();
 TimeValue   osGetTime();

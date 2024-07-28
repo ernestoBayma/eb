@@ -3,18 +3,24 @@
 #include "core.h"
 #include "str.h"
 
-#define ARENA_ALLOCATOR_HDR_SZ 64
-#define ARENA_RESERVE_SIZE MB(64)
-#define ARENA_COMMIT_SIZE KB(64)
+#define ARENA_RESERVE_SIZE MB(2)
+#define ARENA_COMMIT_SIZE KB(2)
 #define ARENA_DEFAULT_ALIGMENT 8
-#define ARENA_MEM_MAX_ALIGN 64
+
+enum {
+  ARENA_GROW=(1<<0),
+  ARENA_TRACK_ALLOCATIONS=(1<<1)
+};
+
+#define ARENA_DEFAULT_FLAGS ARENA_GROW
 
 typedef struct ArenaAllocatorOptions ArenaAllocatorOptions;
 struct ArenaAllocatorOptions 
 {
+    Str allocator_name;
     u64 commited_size;
     u64 reserved_size;
-    Str allocator_name;
+    u64 flags;
 };
 
 typedef struct ArenaAllocator ArenaAllocator;
@@ -22,15 +28,12 @@ struct ArenaAllocator
 {
   ArenaAllocator        *current;
   ArenaAllocator        *prev;
-  ArenaAllocatorOptions *options;
-  u64                   base_offset;         
-  u64                   curr_offset;         
+  ArenaAllocatorOptions options; 
+  u64                   base_offset;
+  u64                   curr_offset;
   u64                   commited;
   u64                   reserved;
-  bool                  grow;               
 };
-
-EB_STATIC_ASSERT(sizeof(ArenaAllocator) <= ARENA_ALLOCATOR_HDR_SZ);
 
 typedef struct ScrachAllocator ScrachAllocator;
 struct ScrachAllocator 
@@ -40,7 +43,7 @@ struct ScrachAllocator
 };
 
 ArenaAllocator *arenaAlloc(ArenaAllocatorOptions *options);
-#define arenaNew(...) arenaAlloc(&(ArenaAllocatorOptions){.reserved_size=ARENA_RESERVE_SIZE,.commited_size=ARENA_COMMIT_SIZE, __VA_ARGS__})
+#define arenaNew(...) arenaAlloc(&(ArenaAllocatorOptions){.reserved_size=ARENA_RESERVE_SIZE,.commited_size=ARENA_COMMIT_SIZE, .flags=ARENA_DEFAULT_FLAGS, __VA_ARGS__})
 
 void arenaRelease(ArenaAllocator *a);
 size_t arenaPosition(ArenaAllocator *a);
@@ -52,8 +55,6 @@ void arenaClear(ArenaAllocator *a);
 ArenaAllocator *arenaJoin(ArenaAllocator *a, ArenaAllocator *b);
 ScrachAllocator scrachNew(ArenaAllocator *a);
 void scrachEnd(ScrachAllocator s);
-
-#define ScrachEnd__debug(s) do{scrachEnd(s);}while(0)
 
 #define push_arena_array(a, T, c) (T*)arenaPush((a), sizeof(T)*(c), Max(8, AlignOf(T)))
 #define push_arena_array_aligned(a, T, c, al) (T*)arenaPush((a), sizeof(T)*(c), (al))

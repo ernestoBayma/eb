@@ -34,7 +34,17 @@ void *memory = 0;
 bool osMemoryCommit(void *memory, size_t size)
 {
 bool ret = false;
-    ret = mprotect(memory, size, PROT_READ|PROT_WRITE) == 0;
+
+    ret   = mprotect(memory, size, PROT_READ|PROT_WRITE) == 0;
+    
+    return ret;
+}
+
+bool osMemoryDecommit(void *memory, size_t size)
+{
+bool ret = false;
+
+    ret = madvise(memory,size, MADV_DONTNEED);
     return ret;
 }
 
@@ -233,6 +243,10 @@ cacheline_t ip_string, port_string;
 
 	for(rp = result; rp != NULL; rp = rp->ai_next) {
     SocketType s = osOpenSocket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+
+    if(osSetSocketOption(s, SO_REUSEADDR, &optval, sizeof(optval)) == false) {
+        return SOCKET_INVALID;
+    }
 		if(ST_TO_INT(s) == -1) continue;
 
 		if(bind(ST_TO_INT(s), rp->ai_addr, rp->ai_addrlen) == 0) 
@@ -247,14 +261,9 @@ cacheline_t ip_string, port_string;
 	if(rp == NULL &&  ST_TO_INT(ret) == -1) {
 		  return SOCKET_INVALID;
 	}
-
-  if(osSetSocketOption(ret, SO_REUSEADDR, &optval, sizeof(optval)) == false) {
-      return SOCKET_INVALID;
-  }
-
   do {
     err = listen(ST_TO_INT(ret), EB_LISTEN_BACKLOG);
-    if(err == -1 && errno != EADDRINUSE) {
+    if(err == -1 && errno != EADDRINUSE ) {
         osCloseSocket(ret);
         return SOCKET_INVALID;
     }
@@ -617,6 +626,26 @@ pid_t  pid;
     success = osCloseFile(pid_file);
   }
   return success;
+}
+
+ProcessInformation osGetProcessInfo()
+{
+#include <sys/resource.h>
+struct rusage usage;
+ProcessInformation info;
+TimeValue cpu_time; 
+
+    getrusage(RUSAGE_SELF, &usage);
+    info.resident_memory_used = usage.ru_maxrss;
+    info.page_faults          = usage.ru_majflt;
+    info.swaps                = usage.ru_nswap;
+
+    cpu_time.whole_part   = usage.ru_utime.tv_sec; 
+    cpu_time.remainder    = usage.ru_utime.tv_usec;
+
+    info.cpu_time_used = cpu_time;
+    
+    return info;
 }
 
 TimeValue osGetTime()

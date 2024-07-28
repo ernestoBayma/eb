@@ -2,19 +2,12 @@
  *
  *  Copyright (C) 2024 Ernesto Bayma
  * - Need to fix:
- *  Scrach Allocation together with main allocation.
  *  Chunked transfer.
  *  Implement other HTTP methods.
  *  HTTPS.
  *
  */
-
-#include <stdio.h>
-#include <string.h>
-#include <time.h>
-#include <stdlib.h>
-#include <ctype.h>
-
+#include "core.h"
 #include "coragem.h"
 
 #define EB_STR_IMPLEMENTATION
@@ -32,7 +25,11 @@
 #define EB_STR_OWN_IMPLEMENTATION
 #include "str_own.h"
 
+#define EB_LISTS_IMPLEMENTATION
+#include "lists.h"
+
 global_var ServerConf global_server;
+global_var int print_counter;
 
 global_var KeyValue usageOptions[] = {
     {"--help", "Display this help message"},
@@ -40,7 +37,6 @@ global_var KeyValue usageOptions[] = {
     {"--daemon", "Makes server run as background process"},
     {0,0}
 };
-
 
 priv_func ArenaAllocator *serverGetMainAllocator(ServerConf *server)
 {
@@ -64,6 +60,7 @@ priv_func void serverSetBackupAllocator(ServerConf *server, ArenaAllocator *aren
 
 priv_func void read_config_file(ServerConf *server, ArenaAllocator *arena, Str filepath);
 priv_func StrList str_list_build_from_lines(Str input_lines, ArenaAllocator *arena);
+priv_func HashList hash_list_build_http_header_from_lines(Str input_lines, ArenaAllocator *arena);
 
 priv_func RequestedFile 
 openRequestedFile(Str filepath, FolderHandle *local_folder) 
@@ -97,8 +94,9 @@ char          fullpath[EB_MAX_PATH_SIZE] = {0};
 StrBuf readFile(ArenaAllocator *arena, RequestedFile file)
 {
 StrBuf buf;
+ScrachAllocator scrach;
 
-    buf = strbuf_alloc(.shared_arena=arena);
+    buf = strbuf_alloc(.shared_arena=scrach.arena);
     osFullReadFromFile(file, &buf);
     return buf;
 }
@@ -112,7 +110,6 @@ Str str;
     osFullWriteToSocket(client, str);
     return true;
 }
-
 
 priv_func RequestedFile closeRequestedFile(RequestedFile file)
 {
@@ -155,10 +152,10 @@ ScrachAllocator  scrach;
 
   if(STR_SIZE(line[PATH]) == 0 || str_is_match(line[PATH], "/"))
     line[PATH] = cstr_lit("index.html");
-  
-  Str file_name = str_trim_start(line[PATH], bar);
 
-  DeferLoop((file = openRequestedFile(file_name, &server->root_folder)), (file = closeRequestedFile(file), scrachEnd(scrach))) {
+  Str file_name = line[PATH];
+  
+  DeferLoop((file = openRequestedFile(file_name, &server->root_folder)), (file = closeRequestedFile(file))) {
     bool found = false;
     for(i = 0; !found && FILE_TYPES[i].http_type_len; i++) {
         if(str_contains(file_name, cstr(FILE_TYPES[i].http_type.key))) {
@@ -170,7 +167,7 @@ ScrachAllocator  scrach;
       memcpy(filetype, FILE_TYPES[0].http_type.value, FILE_TYPES[0].http_type_len);
     }
 
-    StrBuf response = strbuf_alloc(.shared_arena=scrach.arena,.capacity=4096);
+    StrBuf response = strbuf_alloc(.shared_arena=scrach.arena,.capacity=1024);
     if(file.errors == FileRequestSuccess) {
       strbuf_concatf(&response, HTTP_1_1_HEADER(STATUS_OK) HEADER_CONTENT_TYPE HEADER_CONTENT_LEN HEADER_LINE_END HEADER_LINE_END, filetype, file.size);
       ret = STATUS_OK_INTEGER;
@@ -197,6 +194,7 @@ ScrachAllocator  scrach;
     break;
     }
   }
+  scrachEnd(scrach);
 	return ret;
 }
 
@@ -209,23 +207,26 @@ char             error_buff[1024];
 Str              str;
 
   conf = (ServerConf*)server_ctx;
-  temp = scrachNew(serverGetMainAllocator(conf));
+  temp = scrachNew(serverGetBackupAllocator(conf));
   str  = cstr_static(error_buff);
 
   osSystemErrorToStr(str, event.err);
   log_putsf(conf->info_log, temp.arena, Error, 
            "Client had a error: "STRFMT"\n", STR_PRINT_ARGS(str));
-  ScrachEnd__debug(temp);
+  scrachEnd(temp);
 }
 
-/* Note(ern):
- * Reads and Writes need to be handled diferently,
- * for Reading we need to have a static buffer of ?4096? and
- * read util we can fill the buffer, if would block then go
- * to next request, util that request can't fill the buffer anymore.
- * Writting depends of the type and size of the response, but it should be 
- * the same idea. If is a really big file we should send it chunked.
- */ 
+C_Inline void print_hash_list(HashList *list)
+{
+  HashListLinearLoop(list, current) {
+    Str       key  = GetKey(current);
+    Str       data = StrFromDataNodePtr(GetDataNode(current));
+    if(!STR_PTR_VALID(data))
+        continue;
+    log("\nKey: "STRFMT"\nValue: '"STRFMT"'\n", STR_PRINT_ARGS(key), STR_PRINT_ARGS(data));
+  }
+}
+
 enum CallbackResult
 handle_client(Event event, void *server_ctx)
 {
@@ -233,40 +234,45 @@ char            data_from_client[1024];
 int             ret, method_cursor;
 Str             data_str;
 ServerConf      conf;
-StrList         http_header;
-ArenaAllocator *temp;
+HashList         http_header;
 ScrachAllocator scrach;
 
   conf    = *((ServerConf*)server_ctx);
   scrach  = scrachNew(serverGetMainAllocator(&conf));
-  temp    = scrach.arena;
   Str client_data = strbuf_get_str(&event.ev_buff);
   
   ret = -1;
-  http_header = str_list_build_from_lines(client_data, temp);
+  http_header = hash_list_build_http_header_from_lines(client_data, scrach.arena);
+
   if(http_header.count > 0) {
-    StrNode *first_line = http_header.first;
-    if(!first_line) {
+    DataNode *first_element = hash_list_get_first_element(&http_header);
+    if(!first_element) {
         log_puts(conf.info_log, Error, "Could not read http header\n");
         ret = CallbackCloseClient | CallbackError;
-        MemoryZeroStruct(&http_header);
-        ScrachEnd__debug(scrach);
+        scrachEnd(scrach);
+        return ret;
+    }
+    Str first_line = StrFromDataNodePtr(first_element); 
+    if(!STR_PTR_VALID(first_line)) {
+        log_puts(conf.info_log, Error, "Could not read http header\n");
+        ret = CallbackCloseClient | CallbackError;
+        scrachEnd(scrach);
         return ret;        
     }
     for(method_cursor = 0; METHODS_IMPLEMENTED[method_cursor]; method_cursor++) {
-      Str method = str_find_first(first_line->value, METHODS_IMPLEMENTED[method_cursor]);
+      Str method = str_find_first(first_line, METHODS_IMPLEMENTED[method_cursor]);
       if(STR_SIZE(method)) {
         if(method_cursor == METHOD_GET) {
-          ret = handle_get_response(&conf, first_line->value, event.client);          
+          ret = handle_get_response(&conf, first_line, event.client);          
           break;
         }
       }
     }
     if(method_cursor == METHOD_COUNT) {
       log_puts(conf.info_log, Warning, cstr_lit("Unplemented HTTP 1.1 method\n"));
-      log_putsf(conf.request_log, temp, Error, " IP: "STRFMT":%d => %d - '"STRFMT"'\n", STR_PRINT_ARGS(event.info.client_ip), event.info.port, ret, STR_PRINT_ARGS(first_line->value));
+      log_putsf(conf.request_log, scrach.arena, Error, " IP: "STRFMT":%d => %d - '"STRFMT"'\n", STR_PRINT_ARGS(event.info.client_ip), event.info.port, ret, STR_PRINT_ARGS(first_line));
     } else {
-      log_putsf(conf.request_log, temp, Info, " IP: "STRFMT":%d => %d - '"STRFMT"'\n", STR_PRINT_ARGS(event.info.client_ip), event.info.port, ret, STR_PRINT_ARGS(first_line->value));
+      log_putsf(conf.request_log, scrach.arena, Info, " IP: "STRFMT":%d => %d - '"STRFMT"'\n", STR_PRINT_ARGS(event.info.client_ip), event.info.port, ret, STR_PRINT_ARGS(first_line));
     }
   } else {
       log_puts(conf.info_log, Error, cstr_lit("Data from client came empty..\n"));
@@ -276,9 +282,18 @@ ScrachAllocator scrach;
   if(ret == -1) 
     ret = CallbackCloseClient | CallbackSuccess;
 
-  MemoryZeroStruct(&http_header);
-  ScrachEnd__debug(scrach);
+  scrachEnd(scrach);
 
+  if(print_counter % 4096 == 0) {
+    char cpu_time[24];
+    ProcessInformation process_info = osGetProcessInfo();
+    timerAsStr(process_info.cpu_time_used, cpu_time, sizeof(cpu_time));
+    log("[INFO] CPU time used %s\n", cpu_time);
+    log("[INFO] Memory Usage %llu\n", process_info.resident_memory_used);
+    log("[INFO] Page faults  %llu\n", process_info.page_faults);
+    print_counter = 0;
+  }
+  print_counter++;
   return ret;
 }
 
@@ -292,8 +307,7 @@ Str             arg_message_error, config_file_path;
 ScrachAllocator scrach;
 
   scrach              = scrachNew(serverGetBackupAllocator(s));
-  temp                = scrach.arena;
-  args                = str_list_create(temp, arg_values, arg_count);
+  args                = str_list_create(scrach.arena, arg_values, arg_count);
   background_process  = false;
   has_config          = false;
 
@@ -333,7 +347,7 @@ ScrachAllocator scrach;
   }
 
   if(has_config) {
-      read_config_file(s, temp, config_file_path);
+      read_config_file(s, scrach.arena, config_file_path);
   }
 
   osSetupWorkingDirectory(&s->work_dir);
@@ -360,8 +374,9 @@ ScrachAllocator scrach;
   };
 
   s->server = eventInitHandle(serverGetMainAllocator(s), opts);
-  ScrachEnd__debug(scrach); 
-  return true;
+  scrachEnd(scrach); 
+
+  return s->server.valid;
 }
 
 priv_func void main_loop(ServerConf *s)
@@ -445,8 +460,31 @@ char    end_line[] = "\r\n";
   lines = str_list_init_empty(arena);
   do {
     line = str_split_line(&input_lines, end_line);
-    StrOwn l = str_own_copy(arena, line); 
-    str_list_add_from_str(arena, &lines, l.str); 
+    str_list_add_from_str(arena, &lines, line); 
+  } while(STR_PTR_VALID(line));
+  return lines;
+}
+
+priv_func HashList hash_list_build_http_header_from_lines(Str input_lines, ArenaAllocator *arena)
+{
+Str     line, key, value;
+HashList lines;
+char    end_line[] = "\r\n";
+
+  lines = hash_list_new(arena);
+  do {
+    line = str_split_line(&input_lines, end_line);
+    value = line;
+    key  = str_split_first_delim(&value, ":");
+
+    if(STR_SIZE(value) > 0) {
+      value = str_trim(value, cstr_lit(" "));
+    } else {
+      key   = cstr_lit("Request");
+      value = str_trim(line, cstr_lit(" "));
+    }
+
+    hash_list_add_data(arena, &lines, key, DataNodeFromStr(value));
   } while(STR_PTR_VALID(line));
   return lines;
 }
@@ -483,11 +521,8 @@ close_file:
 
 void app_entry_point(int arg_count, char *arg_values[])
 {
-StrList          arg_list;
-
   serverSetMainAllocator(&global_server, arenaNew(.allocator_name=cstr_lit("MainAllocator")));
   serverSetBackupAllocator(&global_server, arenaNew(.allocator_name=cstr_lit("BackupAllocator")));
-
   if(init_server(&global_server, arg_values, arg_count)) {
     main_loop(&global_server);
   }

@@ -11,12 +11,19 @@
 
 priv_func
 ServerTcpHandle
-tcpServerHandle(ArenaAllocator *a, EventOptions *opt)
+tcpServerHandle(ArenaAllocator *a, EventOptions *opt, int *error)
 {
 ServerTcpHandle tcp       = {0};
+    *error = 0;
 
-    tcp.server            = osSocketGetServerSocket(opt->server_ip, opt->server_port);
-    tcp.multiplexer       = osGetMultiplexerHandle(a, opt->multiplexer_type, opt->event_count);
+    tcp.server  = osSocketGetServerSocket(opt->server_ip, opt->server_port);
+
+    if(!IS_ST_VALID(tcp.server)) {
+      *error = 1; 
+      return tcp;
+    }
+
+    tcp.multiplexer = osGetMultiplexerHandle(a, opt->multiplexer_type, opt->event_count);
 
     osAddSocketToMultiplexer(tcp.multiplexer, tcp.server, FlagRead);
     tcp.optional_timeout  = opt->timeout;
@@ -55,15 +62,19 @@ eventInitHandle(ArenaAllocator *a, EventOptions opt)
 {
 EventHandle ret   = {0};
 EventQueueList  queues;
+int error;
 
+    error = 0;
     if(opt.event_type == EventTcpServer) {
-        ret.server_tcp = tcpServerHandle(a, &opt); 
+        ret.server_tcp = tcpServerHandle(a, &opt, &error); 
     }
+    ret.valid = error == 0;
     ret.options = opt; 
-
+    //TODO(ern):  Check the need for EventQueues
+#if 0
     queues = allocEventQueues(a, opt.event_count);
-
     ret.queues   = queues;
+#endif
     return ret;
 }
 
@@ -85,16 +96,11 @@ ScrachAllocator  scrach_event;
   error_callback  = GetEventErrorCallback(h);
   opt             = GetEventHandleOptions(h);
 
-#if 0 // If there is more stuff to do implement this
-  if(event_type == EventTcpServer) {
-
-  }
-#endif
-  
+  // When there is more events to do then change the ServerTcpHandle hardcoded code.
   ServerTcpHandle tcp;
   tcp = h.server_tcp;
   epoll_handle = tcp.multiplexer.e;
-  event_allocation = arenaNew();
+  event_allocation = arenaNew(.allocator_name=cstr_lit("Event allocator"), .flags=ARENA_DEFAULT_FLAGS, .reserved_size=KB(4), .commited_size=KB(4));
   scrach_event = scrachNew(event_allocation);
 
   for(; ; scrachEnd(scrach_event)) {
@@ -148,7 +154,7 @@ ScrachAllocator  scrach_event;
               Str  ip_buf = cstr_static(ip_str_buf);
               e.info.client_ip = ip_buf;
               osGetSocketConnectionInfo(client, ip_buf, &e.info.port);
-              e.ev_buff = strbuf_alloc(.flags=StrBufIncrease|StrBufSharedArena,.shared_arena=event_allocation);
+              e.ev_buff = strbuf_alloc(.flags=StrBufIncrease|StrBufSharedArena,.shared_arena=scrach_event.arena);
               if(osFullReadFromSocket(e.client, &e.ev_buff) != 0) {
                   ret = CallbackCloseClient | CallbackError;
               } else {
@@ -161,6 +167,7 @@ ScrachAllocator  scrach_event;
 
               osRemoveSocketFromMultiplexer(tcp.multiplexer, client);
               osCloseSocket(client);
+              strbuf_release(&e.ev_buff);
         }
     }
   } 

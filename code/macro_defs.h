@@ -283,6 +283,8 @@ CheckNil(nil,p) ? \
 #define PrintVariableString(value) log("[DEBUG] %s = %s\n",   stringfy(value), (value));
 #define PrintVariableU64(value)    log("[DEBUG] %s = %llu\n", stringfy(value), (value));
 
+#define C_Inline static inline
+
 #ifndef _RELEASE_BUILD
   #define debug() log("%s:%d\n", __func__, __LINE__)
 #else
