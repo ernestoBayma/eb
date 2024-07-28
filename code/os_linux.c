@@ -252,10 +252,13 @@ cacheline_t ip_string, port_string;
       return SOCKET_INVALID;
   }
 
-	if(listen(ST_TO_INT(ret), EB_LISTEN_BACKLOG)) {
-		osCloseSocket(ret);
-		return SOCKET_INVALID;
-	}
+  do {
+    err = listen(ST_TO_INT(ret), EB_LISTEN_BACKLOG);
+    if(err == -1 && errno != EADDRINUSE) {
+        osCloseSocket(ret);
+        return SOCKET_INVALID;
+    }
+  } while(err != 0);
 
 	return ret;
 }
@@ -614,4 +617,17 @@ pid_t  pid;
     success = osCloseFile(pid_file);
   }
   return success;
+}
+
+TimeValue osGetTime()
+{
+struct timespec t;
+TimeValue res = {0};
+
+    clock_gettime(CLOCK_MONOTONIC, &t);
+
+    res.whole_part = t.tv_sec;
+    res.remainder  = t.tv_nsec;
+
+    return res;
 }

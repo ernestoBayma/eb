@@ -4,6 +4,7 @@
 #include "allocator.h"
 #include "str.h"
 #include "str_buf.h"
+#include "timer.h"
 
 enum MultiplexerFlags 
 {
@@ -150,3 +151,4 @@ MultiplexerHandle osGetMultiplexerHandle(ArenaAllocator *a,s32 type,s32 event_co
 s32         osMultiplexerPoll(MultiplexerHandle h, s32 timeout);
 bool        osGetSocketConnectionInfo(SocketType sock, Str ip_buf, s32 *port);
 s32         osFullReadFromFile(RequestedFile f, StrBuf *buffer);
+TimeValue   osGetTime();
